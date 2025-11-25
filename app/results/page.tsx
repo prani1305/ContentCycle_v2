@@ -7,21 +7,24 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft,
   RefreshCw,
-  Linkedin,
   Twitter,
-  Scissors,
-  Maximize2,
+  Linkedin,
   Sparkles,
-  FileText,
-  MessageSquare,
-  Plus,
-  Target,
-  Eye,
   Zap,
+  MessageSquare,
+  Target,
+  Scissors,
+  Image as Images,
+  FileText,
+  Maximize2,
+  Eye,
+  Plus,
+  Copy,
+  Check,
   Instagram,
   Mail,
   Youtube,
-  Image as Images
+  Layout
 } from 'lucide-react';
 import { AIEditorPanel } from '@/components/AIEditorPanel';
 import { RankedPost } from '@/lib/types';
@@ -43,6 +46,7 @@ export default function ResultsPage() {
   const [originalInput, setOriginalInput] = useState<string>('');
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
   const [isProcessingRecommendations, setIsProcessingRecommendations] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   const [contentScores, setContentScores] = useState({ clarity: 85, tone: 90, structure: 88, length: 75 });
   const router = useRouter();
 
@@ -181,9 +185,31 @@ export default function ResultsPage() {
           }
         }
 
+        // Helper to clean content
+        const cleanContent = (content: string) => {
+          if (!content) return '';
+          if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+            try {
+              const parsed = JSON.parse(content);
+              if (Array.isArray(parsed)) {
+                return parsed.map(item => {
+                  if (typeof item === 'string') return item;
+                  if (typeof item === 'object' && item !== null) {
+                    return item.content || item.text || item.tweet || item.message || JSON.stringify(item);
+                  }
+                  return String(item);
+                }).join('\n\n');
+              }
+            } catch (e) {
+              // ignore error, return original
+            }
+          }
+          return content;
+        };
+
         setActivePlatform(initialPlatform);
-        setActiveContent(initialContent);
-        setEditingContent(initialContent);
+        setActiveContent(cleanContent(initialContent));
+        setEditingContent(cleanContent(initialContent));
       }
     }
     setLoading(false);
@@ -235,6 +261,24 @@ export default function ResultsPage() {
         content = typeof post.preview === 'string' ? post.preview : JSON.stringify(post.preview);
       }
 
+      // Clean content if it's a stringified array
+      if (content && typeof content === 'string' && content.trim().startsWith('[') && content.trim().endsWith(']')) {
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            content = parsed.map(item => {
+              if (typeof item === 'string') return item;
+              if (typeof item === 'object' && item !== null) {
+                return item.content || item.text || item.tweet || item.message || JSON.stringify(item);
+              }
+              return String(item);
+            }).join('\n\n');
+          }
+        } catch (e) {
+          // ignore error
+        }
+      }
+
       return content || '';
     }
     return '';
@@ -267,8 +311,13 @@ export default function ResultsPage() {
       // Twitter/X post composer
       url = `https://twitter.com/intent/tweet?text=${encodedContent}`;
     } else if (activePlatform === 'linkedin') {
-      // LinkedIn post composer
-      url = `https://www.linkedin.com/post/new?text=${encodedContent}`;
+      // LinkedIn post composer (Feed share)
+      url = `https://www.linkedin.com/feed/?shareActive=true&text=${encodedContent}`;
+    } else if (activePlatform === 'instagram') {
+      // Instagram doesn't support text pre-fill, so we copy to clipboard and open
+      navigator.clipboard.writeText(editingContent);
+      alert('Content copied to clipboard! Opening Instagram...');
+      url = 'https://www.instagram.com/';
     }
 
     if (url) {
@@ -389,8 +438,31 @@ export default function ResultsPage() {
       }
 
       if (data.modifiedContent) {
-        setEditingContent(data.modifiedContent);
-        setActiveContent(data.modifiedContent);
+        // Helper to clean content (reused logic)
+        const cleanContent = (content: string) => {
+          if (!content) return '';
+          if (typeof content === 'string' && content.trim().startsWith('[') && content.trim().endsWith(']')) {
+            try {
+              const parsed = JSON.parse(content);
+              if (Array.isArray(parsed)) {
+                return parsed.map(item => {
+                  if (typeof item === 'string') return item;
+                  if (typeof item === 'object' && item !== null) {
+                    return item.content || item.text || item.tweet || item.message || JSON.stringify(item);
+                  }
+                  return String(item);
+                }).join('\n\n');
+              }
+            } catch (e) {
+              // ignore error
+            }
+          }
+          return content;
+        };
+
+        const cleaned = cleanContent(data.modifiedContent);
+        setEditingContent(cleaned);
+        setActiveContent(cleaned);
         setSelectedRecommendations([]); // Clear selections after applying
       }
 
@@ -662,13 +734,27 @@ export default function ResultsPage() {
                   className="w-full h-[300px] sm:h-[400px] md:h-[500px] px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none resize-none text-gray-900 font-mono text-xs sm:text-sm leading-relaxed whitespace-pre-wrap"
                   placeholder="Your content will appear here..."
                 />
-                <div className="absolute bottom-3 sm:bottom-4 md:bottom-6 right-3 sm:right-4 md:right-6">
+                <div className="absolute bottom-3 sm:bottom-4 md:bottom-6 right-3 sm:right-4 md:right-6 flex gap-2">
                   <Button
-                    onClick={handlePostToPlatform}
-                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(editingContent);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }}
+                    className="flex items-center gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   >
-                    Post
+                    {isCopied ? <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                    {isCopied ? 'Copied!' : 'Copy'}
                   </Button>
+                  {!['blog', 'newsletter', 'email', 'youtube', 'carousel'].includes(activePlatform) && (
+                    <Button
+                      onClick={handlePostToPlatform}
+                      className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                    >
+                      Post
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
